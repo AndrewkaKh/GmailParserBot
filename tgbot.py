@@ -1,197 +1,210 @@
-import telebot
-from telebot.types import ReplyKeyboardMarkup, KeyboardButton
+# bot.py
+import os
+import json
+import logging
+import sqlite3
+from urllib.parse import urljoin
 
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import (
+    ApplicationBuilder,
+    CommandHandler,
+    ContextTypes,
+    CallbackQueryHandler,
+)
 
-class TelegramBot:
-    def __init__(self, token: str):
-        """
-        Инициализация бота.
-        :param token: Токен бота, полученный от BotFather.
-        """
-        self.bot = telebot.TeleBot(token)
-        self.user_data = {}  # Словарь для хранения имен, почты и паролей пользователей
-        self.user_states = {}  # Словарь для хранения состояний пользователей (например, ждём имя, почту или пароль)
+from google_auth_oauthlib.flow import Flow
+from googleapiclient.discovery import build
+from google.oauth2.credentials import Credentials
+import requests
 
-    def create_main_menu(self):
-        """
-        Создает клавиатуру с основными кнопками.
-        """
-        markup = ReplyKeyboardMarkup(resize_keyboard=True)
-        change_name_button = KeyboardButton("Сменить имя")
-        change_email_button = KeyboardButton("Сменить почту")
-        markup.add(change_name_button, change_email_button)
-        return markup
+# Настройка логирования
+logging.basicConfig(
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    level=logging.INFO
+)
+logger = logging.getLogger(__name__)
 
-    def setup_handlers(self):
-        @self.bot.message_handler(commands=['start'])
-        def handle_start(message):
-            """
-            Обработчик команды /start.
-            """
-            user_id = message.from_user.id
+# Константы
+SCOPES = ['https://www.googleapis.com/auth/gmail.readonly']
+CLIENT_SECRETS_FILE = 'client_secret3.json'
+DB_FILE = 'users.db'
 
-            # Создаем клавиатуру с кнопкой "Начать"
-            markup = ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
-            start_button = KeyboardButton("Начать")
-            markup.add(start_button)
+# Публичный URL вашего Flask-сервера через ngrok
+NGROK_URL = 'https://da59-5-34-215-156.ngrok-free.app'  # Замените на ваш актуальный ngrok URL
 
-            self.bot.send_message(
-                user_id,
-                "Добро пожаловать! Нажмите кнопку \"Начать\", чтобы продолжить.",
-                reply_markup=markup
+# Функции для работы с базой данных
+def save_credentials(user_id, account_id, credentials):
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    cursor.execute('''
+        INSERT OR REPLACE INTO users_accounts (user_id, account_id, credentials)
+        VALUES (?, ?, ?)
+    ''', (user_id, account_id, json.dumps(credentials)))
+    conn.commit()
+    conn.close()
+
+def get_credentials(user_id, account_id):
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    cursor.execute('''
+        SELECT credentials FROM users_accounts
+        WHERE user_id = ? AND account_id = ?
+    ''', (user_id, account_id))
+    row = cursor.fetchone()
+    conn.close()
+    if row:
+        return json.loads(row[0])
+    return None
+
+def get_user_accounts(user_id):
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    cursor.execute('''
+        SELECT account_id FROM users_accounts
+        WHERE user_id = ?
+    ''', (user_id,))
+    accounts = cursor.fetchall()
+    conn.close()
+    return [acc[0] for acc in accounts]
+
+# Команда /start
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    accounts = get_user_accounts(user_id)
+    if accounts:
+        await update.message.reply_text(
+            "Вы уже авторизованы. Используйте /get_emails для получения писем."
+        )
+    else:
+        # Начало OAuth2 процесса
+        flow = Flow.from_client_secrets_file(
+            CLIENT_SECRETS_FILE,
+            scopes=SCOPES,
+            redirect_uri=urljoin(NGROK_URL, '/oauth2callback')
+        )
+        auth_url, state = flow.authorization_url(
+            access_type='offline',
+            include_granted_scopes='true',
+            state=str(user_id)  # Используем user_id как state
+        )
+        logger.info(f"Authorization URL для пользователя {user_id}: {auth_url}")
+        # Отправка ссылки пользователю
+        await update.message.reply_text(
+            f"Пожалуйста, авторизуйтесь через Gmail, перейдя по [ссылке]({auth_url}).",
+            parse_mode='Markdown',
+            disable_web_page_preview=True
+        )
+
+# Команда /get_emails
+async def get_emails(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    accounts = get_user_accounts(user_id)
+
+    if not accounts:
+        await update.message.reply_text("У вас нет привязанных почтовых ящиков. Используйте /start для авторизации.")
+        return
+
+    if len(accounts) == 1:
+        account_id = accounts[0]
+        await fetch_and_send_emails(update, context, user_id, account_id)
+    else:
+        # Предложить выбрать аккаунт
+        keyboard = [
+            [InlineKeyboardButton(f"Аккаунт {i+1}", callback_data=acc)] for i, acc in enumerate(accounts)
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await update.message.reply_text('Выберите почтовый ящик:', reply_markup=reply_markup)
+
+# Обработчик нажатий кнопок
+async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    account_id = query.data
+    user_id = query.from_user.id
+    await fetch_and_send_emails(query, context, user_id, account_id)
+
+# Функция для получения и отправки писем
+async def fetch_and_send_emails(update, context, user_id, account_id):
+    credentials_dict = get_credentials(user_id, account_id)
+    if not credentials_dict:
+        await update.message.reply_text("Токены не найдены. Пожалуйста, авторизуйтесь заново с /start.")
+        return
+
+    credentials = Credentials(**credentials_dict)
+
+    # Проверка и обновление токенов
+    if credentials.expired and credentials.refresh_token:
+        try:
+            credentials.refresh(requests.Request())
+            # Сохранение обновленных токенов
+            creds_dict = {
+                'token': credentials.token,
+                'refresh_token': credentials.refresh_token,
+                'token_uri': credentials.token_uri,
+                'client_id': credentials.client_id,
+                'client_secret': credentials.client_secret,
+                'scopes': credentials.scopes
+            }
+            save_credentials(user_id, account_id, creds_dict)
+        except Exception as e:
+            logger.error(f"Ошибка обновления токена: {e}")
+            await update.message.reply_text("Не удалось обновить токен. Пожалуйста, авторизуйтесь заново с /start.")
+            return
+
+    try:
+        service = build('gmail', 'v1', credentials=credentials)
+        results = service.users().messages().list(userId='me', maxResults=5).execute()
+        messages = results.get('messages', [])
+
+        if not messages:
+            await update.message.reply_text("Нет новых сообщений.")
+            return
+
+        for msg in messages:
+            message = service.users().messages().get(userId='me', id=msg['id'], format='full').execute()
+            headers = message.get('payload', {}).get('headers', [])
+            subject = next((h['value'] for h in headers if h['name'] == 'Subject'), 'Без темы')
+            from_ = next((h['value'] for h in headers if h['name'] == 'From'), 'Неизвестно')
+            await update.message.reply_text(f"**От:** {from_}\n**Тема:** {subject}", parse_mode='Markdown')
+    except Exception as e:
+        logger.error(f"Ошибка при получении писем: {e}")
+        await update.message.reply_text("Произошла ошибка при получении писем.")
+
+def main():
+    # Инициализация базы данных
+    def init_db():
+        conn = sqlite3.connect(DB_FILE)
+        cursor = conn.cursor()
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS users_accounts (
+                user_id INTEGER,
+                account_id TEXT,
+                credentials TEXT,
+                PRIMARY KEY (user_id, account_id)
             )
+        ''')
+        conn.commit()
+        conn.close()
 
-        @self.bot.message_handler(func=lambda message: message.text == "Начать")
-        def handle_start_button(message):
-            """
-            Обработчик нажатия на кнопку "Начать".
-            """
-            user_id = message.from_user.id
-            if user_id not in self.user_data:
-                self.user_states[user_id] = 'awaiting_name'
-                self.bot.reply_to(
-                    message,
-                    "Привет! Как тебя зовут?"
-                )
-            else:
-                self.bot.send_message(
-                    user_id,
-                    f"Привет снова, {self.user_data[user_id]['name']}! Как я могу тебе помочь?",
-                    reply_markup=self.create_main_menu()
-                )
+    init_db()
 
-        @self.bot.message_handler(func=lambda message: message.text == "Сменить имя")
-        def handle_change_name_button(message):
-            """
-            Обработчик кнопки "Сменить имя".
-            """
-            user_id = message.from_user.id
-            self.user_states[user_id] = 'changing_name'
-            self.bot.reply_to(
-                message,
-                "Введите новое имя:"
-            )
+    # Загрузка токена бота из переменной окружения
+    TOKEN = "8010623899:AAE4KcSI5rvWzUri0ODzT6TENQiNgdnHLNc"
+    if not TOKEN:
+        logger.error("Не найден токен бота. Установите переменную окружения TELEGRAM_BOT_TOKEN.")
+        return
 
-        @self.bot.message_handler(func=lambda message: message.text == "Сменить почту")
-        def handle_change_email_button(message):
-            """
-            Обработчик кнопки "Сменить почту".
-            """
-            user_id = message.from_user.id
-            self.user_states[user_id] = 'changing_email'
-            self.bot.reply_to(
-                message,
-                "Введите новый адрес почты (например, example@gmail.com):"
-            )
+    # Создание приложения
+    application = ApplicationBuilder().token(TOKEN).build()
 
-        @self.bot.message_handler(content_types=['text'])
-        def handle_text_messages(message):
-            """
-            Обработчик текстовых сообщений.
-            """
-            user_id = message.from_user.id
-            user_message = message.text.strip()
+    # Добавление обработчиков
+    application.add_handler(CommandHandler('start', start))
+    application.add_handler(CommandHandler('get_emails', get_emails))
+    application.add_handler(CallbackQueryHandler(button_handler))
 
-            # Если бот ждет имя пользователя
-            if user_id in self.user_states and self.user_states[user_id] == 'awaiting_name':
-                self.user_data[user_id] = {'name': user_message}  # Сохраняем имя пользователя
-                self.user_states[user_id] = 'awaiting_email'  # Меняем состояние на ожидание почты
-                self.bot.reply_to(
-                    message,
-                    f"Приятно познакомиться, {user_message}! Теперь введи свою почту (например, example@gmail.com)."
-                )
+    # Запуск Telegram бота
+    application.run_polling()
 
-            # Если бот ждет почту пользователя
-            elif user_id in self.user_states and self.user_states[user_id] == 'awaiting_email':
-                if '@gmail.com' in user_message:
-                    self.user_data[user_id]['email'] = user_message  # Сохраняем почту пользователя
-                    self.user_states[user_id] = 'awaiting_password'
-                    self.bot.reply_to(
-                        message,
-                        f"Почта {user_message} сохранена. Теперь введите пароль для этой почты:"
-                    )
-                else:
-                    self.bot.reply_to(
-                        message,
-                        "Почта введена некорректно! Пожалуйста, убедись, что она содержит '@gmail.com'. Попробуй еще раз."
-                    )
-
-            # Если бот ждет пароль пользователя
-            elif user_id in self.user_states and self.user_states[user_id] == 'awaiting_password':
-                self.user_data[user_id]['password'] = user_message  # Сохраняем пароль пользователя
-                self.user_states.pop(user_id)  # Сбрасываем состояние
-                self.bot.send_message(
-                    user_id,
-                    f"Ваши учетные данные сохранены! Почта: {self.user_data[user_id]['email']}, пароль сохранен.",
-                    reply_markup=self.create_main_menu()
-                )
-
-            # Если пользователь меняет имя
-            elif user_id in self.user_states and self.user_states[user_id] == 'changing_name':
-                self.user_data[user_id]['name'] = user_message  # Обновляем имя пользователя
-                self.user_states.pop(user_id)
-                self.bot.send_message(
-                    user_id,
-                    f"Ваше имя успешно изменено на {user_message}!",
-                    reply_markup=self.create_main_menu()
-                )
-
-            # Если пользователь меняет почту
-            elif user_id in self.user_states and self.user_states[user_id] == 'changing_email':
-                if '@gmail.com' in user_message:
-                    self.user_data[user_id]['email'] = user_message  # Обновляем почту пользователя
-                    self.user_states[user_id] = 'changing_email_password'
-                    self.bot.reply_to(
-                        message,
-                        f"Почта {user_message} сохранена. Теперь введите пароль для этой почты:"
-                    )
-                else:
-                    self.bot.reply_to(
-                        message,
-                        "Почта введена некорректно! Пожалуйста, убедитесь, что она содержит '@gmail.com'. Попробуйте еще раз."
-                    )
-
-            # Если бот ждет пароль для обновленной почты
-            elif user_id in self.user_states and self.user_states[user_id] == 'changing_email_password':
-                self.user_data[user_id]['password'] = user_message  # Обновляем пароль пользователя
-                self.user_states.pop(user_id)  # Сбрасываем состояние
-                self.bot.send_message(
-                    user_id,
-                    f"Ваши учетные данные обновлены! Почта: {self.user_data[user_id]['email']}, пароль сохранен.",
-                    reply_markup=self.create_main_menu()
-                )
-
-            # Если пользователь уже зарегистрирован
-            elif user_id in self.user_data:
-                user_name = self.user_data[user_id]['name']
-                self.bot.send_message(
-                    user_id,
-                    f"{user_name}, я получил ваше сообщение: \"{user_message}\"",
-                    reply_markup=self.create_main_menu()
-                )
-
-            # Если пользователь не нажал "Начать", предлагаем начать сначала
-            else:
-                markup = ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
-                start_button = KeyboardButton("Начать")
-                markup.add(start_button)
-                self.bot.send_message(
-                    user_id,
-                    "Для начала нажмите кнопку \"Начать\".",
-                    reply_markup=markup
-                )
-            print(self.user_data)
-
-    def run(self):
-        """
-        Запуск бота.
-        """
-        print("Бот запущен!")
-        self.bot.infinity_polling()
-
-
-if __name__ == "__main__":
-    API_TOKEN = 'ваш_токен_бота'
-    telegram_bot = TelegramBot(API_TOKEN)
-    telegram_bot.setup_handlers()
-    telegram_bot.run()
+if __name__ == '__main__':
+    main()
