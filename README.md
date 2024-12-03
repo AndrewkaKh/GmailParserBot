@@ -1,5 +1,3 @@
-Вот пример оформления вашего README.md в формате Markdown для GitHub:
-
 # GmailParserBot
 
 [![GitHub](https://img.shields.io/badge/GitHub-Repo-blue)](ссылка)
