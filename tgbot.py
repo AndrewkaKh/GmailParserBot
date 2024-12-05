@@ -1,5 +1,6 @@
 # bot.py
 import os
+import pickle
 import json
 import logging
 import sqlite3
@@ -17,6 +18,10 @@ from google_auth_oauthlib.flow import Flow
 from googleapiclient.discovery import build
 from google.oauth2.credentials import Credentials
 import requests
+
+# Модель машинного обучения для предсказания спам/не спам
+with open('spamclassifiermodel/model.pkl', 'rb') as f:
+    vectorizer, spam_predictor = pickle.load(f)
 
 # Настройка логирования
 logging.basicConfig(
@@ -162,6 +167,7 @@ async def fetch_and_send_emails(update, context, user_id, account_id):
             return
 
         for msg in messages:
+            # проверяем письма на спам
             message = service.users().messages().get(userId='me', id=msg['id'], format='full').execute()
             headers = message.get('payload', {}).get('headers', [])
             subject = next((h['value'] for h in headers if h['name'] == 'Subject'), 'Без темы')

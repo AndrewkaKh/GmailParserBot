@@ -1,3 +1,7 @@
 client_secret3.json
 users.db
 apikey
+.DS_Store
+spam.csv
+spamdetector.py
+test_spam_classifier.py
