@@ -192,6 +192,8 @@ async def fetch_and_send_emails(update, context, user_id, account_id):
             body = get_message_body(message)
             if body:
                 #Тело письма
+                cur_email = vectorizer.transform([body])
+                cur_predict = spam_predictor.predict(cur_email)
                 logger.info("текст письма получен")
                 await update.message.reply_text("Текст письма получен.")
             else:
