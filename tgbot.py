@@ -377,7 +377,7 @@ async def fetch_and_send_emails(update, context, user_id, account_id):
                 cur_predict = spam_predictor.predict(cur_email)
                 logger.info("Текст письма получен")
                 await send_processed_email(update, context, from_, subject, body)
-                await update.message.reply_text(f"Текст письма получен. Результат модельки: {cur_predict}")
+                await update.message.reply_text(f"Текст письма получен. Вердикт классификатора: {['НЕ СПАМ', 'СПАМ'][cur_predict[0]]}")
             else:
                 await update.message.reply_text(
                     f"*От кого:*\n{escape_markdown(from_, version=2)}\n"
