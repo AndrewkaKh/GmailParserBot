@@ -18,6 +18,8 @@ from google_auth_oauthlib.flow import Flow
 from googleapiclient.discovery import build
 from google.oauth2.credentials import Credentials
 import requests
+import base64
+from telegram.helpers import escape_markdown
 
 # Модель машинного обучения для предсказания спам/не спам
 with open('spamclassifiermodel/model.pkl', 'rb') as f:
@@ -136,7 +138,19 @@ async def fetch_and_send_emails(update, context, user_id, account_id):
         await update.message.reply_text("Токены не найдены. Пожалуйста, авторизуйтесь заново с /start.")
         return
 
-    credentials = Credentials(**credentials_dict)
+    try:
+        credentials = Credentials(
+            token=credentials_dict['token'],
+            refresh_token=credentials_dict['refresh_token'],
+            token_uri=credentials_dict['token_uri'],
+            client_id=credentials_dict['client_id'],
+            client_secret=credentials_dict['client_secret'],
+            scopes=credentials_dict['scopes']
+        )
+    except KeyError as e:
+        logger.error(f"Отсутствует необходимое поле в учётных данных: {e}")
+        await update.message.reply_text("Некорректные учётные данные. Пожалуйста, авторизуйтесь заново с /start.")
+        return
 
     # Проверка и обновление токенов
     if credentials.expired and credentials.refresh_token:
@@ -151,7 +165,7 @@ async def fetch_and_send_emails(update, context, user_id, account_id):
                 'client_secret': credentials.client_secret,
                 'scopes': credentials.scopes
             }
-            save_credentials(user_id, account_id, creds_dict)
+            save_credentials(user_id, account_id, credentials)
         except Exception as e:
             logger.error(f"Ошибка обновления токена: {e}")
             await update.message.reply_text("Не удалось обновить токен. Пожалуйста, авторизуйтесь заново с /start.")
@@ -159,7 +173,9 @@ async def fetch_and_send_emails(update, context, user_id, account_id):
 
     try:
         service = build('gmail', 'v1', credentials=credentials)
-        results = service.users().messages().list(userId='me', maxResults=5).execute()
+
+        # Получение только непрочитанных сообщений
+        results = service.users().messages().list(userId='me', q='is:unread', maxResults=1).execute()
         messages = results.get('messages', [])
 
         if not messages:
@@ -167,15 +183,76 @@ async def fetch_and_send_emails(update, context, user_id, account_id):
             return
 
         for msg in messages:
-            # проверяем письма на спам
             message = service.users().messages().get(userId='me', id=msg['id'], format='full').execute()
             headers = message.get('payload', {}).get('headers', [])
             subject = next((h['value'] for h in headers if h['name'] == 'Subject'), 'Без темы')
             from_ = next((h['value'] for h in headers if h['name'] == 'From'), 'Неизвестно')
-            await update.message.reply_text(f"**От:** {from_}\n**Тема:** {subject}", parse_mode='Markdown')
+
+            # Извлечение тела письма
+            body = get_message_body(message)
+            if body:
+                #Тело письма
+                logger.info("текст письма получен")
+                await update.message.reply_text("Текст письма получен.")
+            else:
+                await update.message.reply_text(
+                    f"*От:* {escape_markdown(from_, version=2)}\n*Тема:* {escape_markdown(subject, version=2)}\n*Текст:*\nНе удалось извлечь текст письма.",
+                    parse_mode='MarkdownV2')
+
+            # Пометка письма как прочитанного
+            """service.users().messages().modify(
+                userId='me',
+                id=msg['id'],
+                body={'removeLabelIds': ['UNREAD']}
+            ).execute()"""
+
     except Exception as e:
         logger.error(f"Ошибка при получении писем: {e}")
         await update.message.reply_text("Произошла ошибка при получении писем.")
+
+
+def get_message_body(message):
+    """
+    Функция для извлечения текста письма из сообщения Gmail API.
+    Обрабатывает все части сообщения рекурсивно.
+    """
+    try:
+        parts = message['payload'].get('parts')
+        if not parts:
+            # Если сообщение не многокомпонентное
+            body_data = message['payload']['body'].get('data', '')
+            return decode_base64(body_data)
+
+        # Ищем часть с MIME типом 'text/plain'
+        for part in parts:
+            if part['mimeType'] == 'text/plain':
+                body_data = part['body'].get('data', '')
+                return decode_base64(body_data)
+            elif part['mimeType'].startswith('multipart/'):
+                # Рекурсивный вызов для вложенных частей
+                sub_body = get_message_body(part)
+                if sub_body:
+                    return sub_body
+            elif part['mimeType'] == 'text/html':
+                body_data = part['body'].get('data', '')
+                return decode_base64(body_data)
+
+        return "Текст письма не найден."
+    except Exception as e:
+        logger.error(f"Ошибка при извлечении тела письма: {e}")
+        return None
+
+
+def decode_base64(data):
+    """
+    Функция для декодирования base64url строки.
+    """
+    try:
+        decoded_bytes = base64.urlsafe_b64decode(data + '==')
+        return decoded_bytes.decode('utf-8')
+    except Exception as e:
+        logger.error(f"Ошибка при декодировании данных: {e}")
+        return "Не удалось декодировать текст письма."
 
 def main():
     # Инициализация базы данных
