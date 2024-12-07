@@ -1,5 +1,3 @@
-<img width="338" alt="image" src="https://github.com/user-attachments/assets/6cd9e8ec-156b-4a36-ab4c-39631a15ddca"># GmailParserBot
-
 [![GitHub](https://img.shields.io/badge/GitHub-Repo-blue)](ссылка)
 
 ## Команда
