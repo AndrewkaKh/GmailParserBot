@@ -1,4 +1,4 @@
-# GmailParserBot
+<img width="338" alt="image" src="https://github.com/user-attachments/assets/6cd9e8ec-156b-4a36-ab4c-39631a15ddca"># GmailParserBot
 
 [![GitHub](https://img.shields.io/badge/GitHub-Repo-blue)](ссылка)
 
@@ -12,6 +12,7 @@
 ## Описание
 
 GmailParserBot — это Telegram-бот, который уведомляет пользователей о важных письмах из их Gmail. Пользователь предоставляет боту свои учетные данные (credentials), привязывая свою Gmail почту, и бот начинает уведомлять его о важных письмах. Важность писем можно настраивать по фильтрам или ключевым словам.
+Пример работы: https://disk.yandex.ru/i/4tytD-VC-3taWg
 
 ## Технологии
 
