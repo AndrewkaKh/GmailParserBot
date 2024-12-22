@@ -71,10 +71,7 @@ async def fetch_and_send_emails(update, context, user_id, account_id):
             # Проверка на соответствие фильтрам
             if matches_filter(email_body, email_subject, user_filters):
                 await update.message.reply_text(
-                    f"⚠️ Важное письмо!\n"
-                    f"*От кого:* {escape_markdown_except_links(details['from'])}\n"
-                    f"*Тема:* {escape_markdown_except_links(email_subject)}",
-                    parse_mode='MarkdownV2'
+                    f"⚠️ Важное письмо! Оно соответствует вашим выставленным фильтрам: {user_filters}\n"
                 )
 
             # Отправляем письмо пользователю
