@@ -1,6 +1,6 @@
 import logging
 from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler
-from bot.handlers import start, get_emails, button_handler
+from bot.handlers import start, get_emails, button_handler, set_filters, get_filters
 from bot.db import init_db
 from config import TELEGRAM_BOT_TOKEN
 
@@ -28,6 +28,8 @@ def main():
     # Регистрация обработчиков команд
     application.add_handler(CommandHandler('start', start))
     application.add_handler(CommandHandler('get_emails', get_emails))
+    application.add_handler(CommandHandler('set_filters', set_filters))
+    application.add_handler(CommandHandler('get_filters', get_filters))
     application.add_handler(CallbackQueryHandler(button_handler))
 
     # Запуск бота

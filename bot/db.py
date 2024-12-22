@@ -54,3 +54,28 @@ def get_user_accounts(user_id):
     accounts = cursor.fetchall()
     conn.close()
     return [acc[0] for acc in accounts]
+
+def save_user_filters(user_id, filters):
+    """Сохраняет список ключевых фраз пользователя в базу данных."""
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    cursor.execute('''
+        INSERT OR REPLACE INTO user_filters (user_id, filters)
+        VALUES (?, ?)
+    ''', (user_id, json.dumps(filters)))
+    conn.commit()
+    conn.close()
+
+def get_user_filters(user_id):
+    """Получает список ключевых фраз пользователя из базы данных."""
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    cursor.execute('''
+        SELECT filters FROM user_filters
+        WHERE user_id = ?
+    ''', (user_id,))
+    row = cursor.fetchone()
+    conn.close()
+    if row:
+        return json.loads(row[0])
+    return []

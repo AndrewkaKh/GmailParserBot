@@ -51,3 +51,13 @@ def split_markdown_message(text, max_length=4096):
     if current_part:
         parts.append(current_part)
     return parts
+
+def matches_filter(email_body, email_subject, filters):
+    """
+    Проверяет, содержит ли тело или тема письма хотя бы один из фильтров.
+    """
+    for filter_word in filters:
+        if filter_word.lower() in email_body.lower() or filter_word.lower() in email_subject.lower():
+            return True
+    return False
+

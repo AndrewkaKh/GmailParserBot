@@ -6,6 +6,7 @@ def init_db():
     """Создает таблицы в базе данных, если они отсутствуют."""
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
+    # Создание таблицы для учетных записей
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS users_accounts (
             user_id INTEGER,
@@ -14,8 +15,16 @@ def init_db():
             PRIMARY KEY (user_id, account_id)
         )
     ''')
+    # Создание таблицы для фильтров
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS user_filters (
+            user_id INTEGER PRIMARY KEY,
+            filters TEXT
+        )
+    ''')
     conn.commit()
     conn.close()
+
 
 def save_credentials(user_id, account_id, credentials):
     """Сохраняет учетные данные пользователя в базу данных."""
