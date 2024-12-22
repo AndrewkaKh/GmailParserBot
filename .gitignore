@@ -6,3 +6,4 @@ spam.csv
 test_spam_classifier.py
 config.py
 openai_api_key
+bot/client_secret1.json
