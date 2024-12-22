@@ -58,7 +58,7 @@ def matches_filter(email_body, email_subject, filters):
     """
     Проверяет, содержит ли тело или тема письма хотя бы один из фильтров.
     """
-    filename = '../openai_api_key'
+    filename = 'openai_api_key'
 
     classifier_output = int(analyze_email_with_keywords(email_body, filters, filename))
 
