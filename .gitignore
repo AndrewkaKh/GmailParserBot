@@ -6,3 +6,4 @@ spam.csv
 spamdetector.py
 test_spam_classifier.py
 config.py
+openai_api_key
