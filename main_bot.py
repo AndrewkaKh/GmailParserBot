@@ -2,8 +2,9 @@ import logging
 from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler
 from bot.handlers import start, get_emails, button_handler
 from bot.db import init_db
+from config import TELEGRAM_BOT_TOKEN
 
-TOKEN = "8010623899:AAE4KcSI5rvWzUri0ODzT6TENQiNgdnHLNc"  # Замените на ваш токен
+TOKEN = TELEGRAM_BOT_TOKEN
 
 # Настройка логирования
 logging.basicConfig(
