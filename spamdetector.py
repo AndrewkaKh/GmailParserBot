@@ -37,16 +37,3 @@ def analyze_email_with_keywords(email_body, keywords, api_key_file):
 
     # Возврат результата
     return output.choices[0].message.content.strip()
-
-
-# filename = 'openai_api_key'
-#
-# email_body = '"Короче хочу сходить на Черную пятницу залутаться, потом телок тусануть и пивандопалу попить, ' \
-#              'ты с нами броски-плутоски?"'
-# keywords = ['черная пятница', 'туса']
-#
-# try:
-#     result = analyze_email_with_keywords(email_body, keywords, filename)
-#     print(result)
-# except Exception as e:
-#     print(f"Ошибка: {e}")

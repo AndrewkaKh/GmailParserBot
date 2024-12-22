@@ -1,7 +1,7 @@
 import re
 import textwrap
 from telegram.helpers import escape_markdown
-from GmailParserBot.spamdetector import analyze_email_with_keywords
+from spamdetector import analyze_email_with_keywords
 
 
 def escape_markdown_except_links(text):
