@@ -1,6 +1,8 @@
 import re
 import textwrap
 from telegram.helpers import escape_markdown
+from GmailParserBot.spamdetector import analyze_email_with_keywords
+
 
 def escape_markdown_except_links(text):
     """
@@ -56,8 +58,27 @@ def matches_filter(email_body, email_subject, filters):
     """
     Проверяет, содержит ли тело или тема письма хотя бы один из фильтров.
     """
-    for filter_word in filters:
-        if filter_word.lower() in email_body.lower() or filter_word.lower() in email_subject.lower():
-            return True
-    return False
+    filename = '../openai_api_key'
 
+    classifier_output = int(analyze_email_with_keywords(email_body, filters, filename))
+
+    if classifier_output:
+        return True
+    else:
+        return False
+    #
+    #
+    # for filter_word in filters:
+    #     if filter_word.lower() in email_body.lower() or filter_word.lower() in email_subject.lower():
+    #         return True
+    # return False
+
+# filename = '../openai_api_key'
+#
+# email_body = '"Короче хочу сходить на Черную пятницу залутаться, потом телок тусануть и пивандопалу попить, ' \
+#              'ты с нами броски-плутоски?"'
+# filters = ['черная пятница', 'туса']
+#
+# classifier_output = int(analyze_email_with_keywords(email_body, filters, filename))
+#
+# print(classifier_output)
