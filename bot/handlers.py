@@ -72,3 +72,9 @@ async def fetch_and_send_emails(update, context, user_id, account_id):
             message_parts = split_markdown_message(message_text)
             for part in message_parts:
                 await update.message.reply_text(part, parse_mode='MarkdownV2', disable_web_page_preview=True)
+
+        service.users().messages().modify(
+            userId='me',
+            id=msg['id'],
+            body={'removeLabelIds': ['UNREAD']}
+        ).execute()

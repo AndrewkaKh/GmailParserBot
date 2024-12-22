@@ -1,3 +1,5 @@
+import os
+
 # OAuth2
 SCOPES = ['https://www.googleapis.com/auth/gmail.modify']
 CLIENT_SECRETS_FILE = 'bot/client_secret1.json'
