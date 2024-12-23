@@ -79,3 +79,12 @@ def get_user_filters(user_id):
     if row:
         return json.loads(row[0])
     return []
+
+def get_all_user_ids():
+    """Возвращает список всех пользователей из базы данных."""
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    cursor.execute("SELECT DISTINCT user_id FROM users_accounts")
+    users = [row[0] for row in cursor.fetchall()]
+    conn.close()
+    return users

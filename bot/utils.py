@@ -4,15 +4,37 @@ from telegram.helpers import escape_markdown
 from spamdetector import analyze_email_with_keywords
 
 
+def escape_markdown_v2(text: str) -> str:
+    """
+    Экранирует все специальные символы MarkdownV2.
+    Сначала «удваиваем» уже существующие обратные слэши,
+    чтобы не ломать последовательности при втором шаге.
+    Затем экранируем все спецсимволы, подставляя перед ними '\'.
+    """
+    # 1) Сначала удвоим все существующие слэши, чтобы они не "съедались"
+    text = text.replace('\\', '\\\\')
+
+    # 2) Теперь экранируем все символы, которые Telegram требует экранировать в MarkdownV2
+    special_chars = r"_*[]()~`>#+-=|{}.!"
+    escaped_text = re.sub(f"([{re.escape(special_chars)}])", "", text)
+    return escaped_text
+
 def escape_markdown_except_links(text):
     """
     Экранирует специальные символы MarkdownV2 в тексте, за исключением ссылок.
     """
+
+    # Регулярное выражение для поиска ссылок
     link_pattern = re.compile(r'\[.*?\]\(.*?\)')
-    links = link_pattern.findall(text)
-    parts = link_pattern.split(text)
+    links = link_pattern.findall(text)  # Найти все ссылки
+    parts = link_pattern.split(text)    # Разделить текст на части без ссылок
+
+    # Экранировать текст вне ссылок
     escaped_parts = [escape_markdown(part, version=2) for part in parts]
+
+    # Собрать текст обратно
     return ''.join([escaped + link for escaped, link in zip(escaped_parts, links + [''])])
+
 
 def replace_urls_with_links(text):
     """

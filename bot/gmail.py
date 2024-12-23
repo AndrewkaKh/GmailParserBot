@@ -1,7 +1,10 @@
 import base64
+import time
 import logging
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
+
+from config import TIMER_INTERVAL
 
 logger = logging.getLogger(__name__)
 
@@ -9,10 +12,19 @@ def get_service(credentials):
     """Создает Gmail API сервис."""
     return build('gmail', 'v1', credentials=credentials)
 
-def fetch_unread_emails(service, max_results=1):
-    """Получает список непрочитанных сообщений."""
+def fetch_unread_emails(service, timer_interval=TIMER_INTERVAL):
+    """
+    Получает список непрочитанных сообщений за последние timer_interval секунд.
+    :param service: Gmail API сервис.
+    :param timer_interval: Интервал времени в секундах (по умолчанию 15 минут).
+    """
     try:
-        results = service.users().messages().list(userId='me', q='is:unread', maxResults=max_results).execute()
+        # Вычисляем время начала интервала в формате UNIX
+        unix_time_since = int(time.time()) - timer_interval
+        query = f"is:unread after:{unix_time_since}"
+
+        # Получаем сообщения с учётом фильтрации
+        results = service.users().messages().list(userId='me', q=query).execute()
         return results.get('messages', [])
     except HttpError as e:
         logger.error(f"Ошибка получения сообщений: {e}")

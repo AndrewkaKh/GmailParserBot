@@ -5,9 +5,10 @@ from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import Flow
 
+from config import CLIENT_SECRETS_FILE, NGROK_URL
+
 SCOPES = ['https://www.googleapis.com/auth/gmail.modify']
-CLIENT_SECRETS_FILE = 'client_secret1.json'
-NGROK_URL = 'https://bf3a-5-34-215-156.ngrok-free.app'  # Замените на ваш актуальный URL
+CLIENT_SECRETS_FILE = CLIENT_SECRETS_FILE
 
 def create_flow(user_id):
     """Создает OAuth2 Flow для авторизации пользователя."""
